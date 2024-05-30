@@ -9,3 +9,12 @@ sqld 시험 결과를 미리 확인할수 있는 파이썬 기반 프로그램
 
 # 작동
 - dataq.or.kr 의 아이디와 비밀번호를 입력합니다.
+
+---
+
+## main.py 실행
+```
+pip install tkinter
+pip install requests
+python main.py
+```
