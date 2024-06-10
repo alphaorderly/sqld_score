@@ -4,7 +4,7 @@ use reqwest::header::HeaderMap;
 use serde_json::Value;
 
 
-pub fn login(id: &String, password: &String) -> String {
+pub fn login(id: &String, password: &String) -> Result<String, String> {
     let url: &str = "https://www.dataq.or.kr/www/accounts/login/proc.do";
 
     let mut headers: HeaderMap = HeaderMap::new();
@@ -23,23 +23,31 @@ pub fn login(id: &String, password: &String) -> String {
     let res = post_client.post(url)
         .headers(headers)
         .form(&form)
-        .send()
-        .unwrap();
+        .send();
+
+    let res = match res {
+        Ok(res) => res,
+        Err(_) => return Err(String::from("로그인 실패")),
+    };
         
     let headers = res.headers().get_all("Set-Cookie");
 
     for cookies in headers {
-        let cookie = cookies.to_str().unwrap();
+        let cookie = cookies.to_str();
+        let cookie = match cookie {
+            Ok(cookie) => cookie,
+            Err(_) => return Err(String::from("로그인 실패")),
+        };
         if cookie.contains("JSESSIONID") {
             let session = cookie.split(";").collect::<Vec<&str>>()[0].split("=").collect::<Vec<&str>>()[1];
-            return session.to_string();
+            return Ok(session.to_string());
         }
     }
 
-    return String::new(); // Add this line to return an empty string
+    return Ok(String::new()); // Add this line to return an empty string
 }
 
-pub fn get_tests(session_id: &String) -> Vec<u64> {
+pub fn get_tests(session_id: &String) -> Result<Vec<u64>, String> {
     let url: &str = "https://www.dataq.or.kr/www/mypage/accept/result.dox";
 
     let mut headers: HeaderMap = HeaderMap::new();
@@ -53,20 +61,43 @@ pub fn get_tests(session_id: &String) -> Vec<u64> {
     let res = get_client.post(url)
         .headers(headers)
         .body("{}")
-        .send()
-        .unwrap();
+        .send();
+    
+    let res = match res {
+        Ok(res) => res,
+        Err(_) => return Err(String::from("시험 결과를 가져오는데 실패했습니다.\n아이디 혹은 비밀번호를 확인해주세요")),
+    };
 
-    let body: Value = serde_json::from_str(&res.text().unwrap()).unwrap();
+    let text = res.text();
+    let text = match text {
+        Ok(text) => text,
+        Err(_) => return Err(String::from("시험 결과를 가져오는데 실패했습니다.\n아이디 혹은 비밀번호를 확인해주세요")),
+    };
 
-    let list = body["list"].as_array().unwrap();
+    let body: Result<Value, serde_json::Error> = serde_json::from_str(&text);
+    let body = match body {
+        Ok(body) => body,
+        Err(_) => return Err(String::from("시험 결과를 가져오는데 실패했습니다.\n아이디 혹은 비밀번호를 확인해주세요")),
+    };
+
+    let list = body["list"].as_array();
+    let list = match list {
+        Some(list) => list,
+        None => return Err(String::from("시험 결과를 가져오는데 실패했습니다.\n아이디 혹은 비밀번호를 확인해주세요")),
+    };
 
     let mut tests: Vec<u64> = Vec::new();
 
     for test in list {
-        tests.push(test["aplySeq"].as_u64().unwrap())
+        let single_test = test["aplySeq"].as_u64();
+        let single_test = match single_test {
+            Some(single_test) => single_test,
+            None => continue,
+        };
+        tests.push(single_test)
     }
 
-    return tests;
+    return Ok(tests)
 }
 
 pub fn get_test_results(session_id: &String, test_id: &Vec<u64>, label_text: &mut String) {
@@ -76,6 +107,8 @@ pub fn get_test_results(session_id: &String, test_id: &Vec<u64>, label_text: &mu
 
     for test in test_id {
         let url: &str = "https://www.dataq.or.kr/www/mypage/accept/score.dox";
+
+        label_text.clear();
 
         let mut headers: HeaderMap = HeaderMap::new();
         headers.insert("Content-Type", "application/json; charset=UTF-8".parse().unwrap());
